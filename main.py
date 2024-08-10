@@ -28,8 +28,8 @@ def is_subscribed(bot, user_id, channel_username):
 def is_subscribed_to_both(bot, user_id):
     return is_subscribed(bot, user_id, CHANNEL_USERNAME_1) and is_subscribed(bot, user_id, CHANNEL_USERNAME_2)
 
-# Videoni yuklab olish funksiyasi
-def download_video_from_url(url):
+# Videoni yuklab olish va o'chirish funksiyasi
+def download_and_remove_video_from_url(url):
     try:
         ydl_opts = {
             'outtmpl': 'downloads/%(id)s.%(ext)s',
@@ -40,34 +40,38 @@ def download_video_from_url(url):
                 'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
                 'Accept-Language': 'en-us,en;q=0.5',
                 'Sec-Fetch-Mode': 'navigate'
-            }
+            },
+            'merge_output_format': None  # FFMPEGni talab qilmaydi
         }
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
             result = ydl.extract_info(url, download=True)
             video_file = ydl.prepare_filename(result)
-            return video_file, None
+            # Faylni yuklab olishdan keyin o'chirish
+            return video_file
+        os.remove(video_file)
     except Exception as e:
         logging.error(f"Video yuklab olishda xatolik: {str(e)}")
-        return None, "Video yuklab olishda xatolik yuz berdi."
+        return None
 
 # Boshlang'ich xabarni yuboruvchi funksiya
 def send_welcome(bot, message):
     markup = types.InlineKeyboardMarkup()
-    btn_subscribe_1 = types.InlineKeyboardButton("Kanalga obuna bo'lish👀", url=f"https://t.me/{CHANNEL_USERNAME_1[1:]}")
-    btn_subscribe_2 = types.InlineKeyboardButton("Kanalga obuna bo'lish👀", url=f"https://t.me/{CHANNEL_USERNAME_2[1:]}")
+    btn_subscribe_1 = types.InlineKeyboardButton("1-Kanal👀", url=f"https://t.me/{CHANNEL_USERNAME_1[1:]}")
+    btn_subscribe_2 = types.InlineKeyboardButton("2-Kanal👀", url=f"https://t.me/{CHANNEL_USERNAME_2[1:]}")
     btn_confirm = types.InlineKeyboardButton("Tasdiqlash✅", callback_data='confirm')
-    markup.row(btn_subscribe_1)
-    markup.row(btn_subscribe_2)
+    markup.row(btn_subscribe_1, btn_subscribe_2)
     markup.add(btn_confirm)
-    bot.send_message(message.chat.id, "Botdan foydalanish uchun kanallarga obuna bo'ling va Tasdiqlang✅", reply_markup=markup)
+    bot.send_message(message.chat.id, "Botdan foydalanish uchun kanallarga obuna bo'ling va Tasdiqlang✅.", reply_markup=markup)
 
 # Obuna bo'lishni tasdiqlovchi funksiya
 def confirm_subscription(bot, message):
     user_id = message.from_user.id
     if is_subscribed_to_both(bot, user_id):
-        bot.send_message(message.chat.id, "Kanallarga obuna bo'lganingiz Tasdiqlandi✅. Endi video linkini yuboring.")
+        # Tasdiqlashdan so'ng tugmalarni o'chirish
+        markup = types.InlineKeyboardMarkup()
+        bot.edit_message_text("Kanallarga obuna bo'lganingiz tasdiqlandi. Endi video linkini yuboring🫴🏻.", message.chat.id, message.message_id, reply_markup=markup)
     else:
-        bot.send_message(message.chat.id, "Kanallarga obuna bo'lmagansiz. Iltimos, Kanallarga obuna bo'ling!")
+        bot.send_message(message.chat.id, "Kanallarga obuna bo'lmagansiz. Iltimos, obuna bo'ling👌🏻!.")
 
 # Matnli xabarni qayta ishlovchi funksiya
 def handle_text_message(bot, message):
@@ -76,18 +80,18 @@ def handle_text_message(bot, message):
         url = message.text
         if url.startswith('http://') or url.startswith('https://'):
             loading_message = bot.send_message(message.chat.id, "⌛")
-            video_file, error = download_video_from_url(url)
+            video_file = download_and_remove_video_from_url(url)
             bot.delete_message(message.chat.id, loading_message.message_id)
-            if video_file:
+            if video_file and os.path.exists(video_file):
                 bot.send_video(message.chat.id, open(video_file, 'rb'))
+                # Video faylni o'chirish
+                os.remove(video_file)
             else:
                 bot.send_message(message.chat.id, "Video yuklab olishda xatolik yuz berdi.")
-                if error:
-                    bot.send_message(ADMIN_USER_ID, f"Video yuklab olishda xatolik: {str(error)}")
         else:
-            bot.send_message(message.chat.id, "Iltimos, to'g'ri URL yuboring!")
+            bot.send_message(message.chat.id, "Iltimos, to'g'ri Link yuboring!")
     else:
-        bot.send_message(message.chat.id, "Iltimos, avval kanallarga obuna bo'ling va tasdiqlang.")
+        bot.send_message(message.chat.id, "Iltimos, avval kanallarga obuna bo'ling! va Tasdiqlang✅")
 
 # Botni ishga tushirish
 @bot.message_handler(commands=['start'])
